@@ -11,7 +11,6 @@ app.use(express.json())
 
 const clientAI = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const sessions = {}
-const grupoAtendimento = '120363418732966493@g.us'
 
 const TIMEOUT_ATENDIMENTO = 24 * 60 * 60 * 1000 // 24h
 const BUFFER_TIME = 2 * 60 * 1000 // 2 minutos
@@ -19,8 +18,15 @@ const MAX_HISTORY = 10
 
 // API WhatsApp
 const WHATSAPP_API = process.env.WPP_API_URL
+const ENV_IS_TEST = process.env.ENV_IS_TEST || false
+if (ENV_IS_TEST) {
+  console.log('⚠️ Modo de teste ativado. Usando sessão e API key de teste.')
+}
 const SESSION_ID = process.env.WPP_SESSION
 const API_KEY = process.env.WPP_API_KEY
+
+const grupoAtendimento = '120363418732966493@g.us'
+
 
 // 📘 Informações fixas
 // const INFOS_FIXAS_CURSOS = `
@@ -69,12 +75,20 @@ function startTimeoutAtendimento (from) {
   session.timeoutId = setTimeout(async () => {
     session.atendimentoAtivo = false
     session.timeoutId = null
-    await enviarMensagem(from, 'O atendimento automático foi reativado após 24h de inatividade.')
-    await apresentarIA(from)
+    console.log('O atendimento automático foi reativado para: ', to)
   }, TIMEOUT_ATENDIMENTO)
 }
 
 async function apresentarIA (to) {
+
+  if (ENV_IS_TEST) {
+    console.log('⚠️ Modo de teste: mensagem de apresentação da IA não será enviada.')
+    await enviarMensagem( to, `Olá! Sou um robô e estou sendo testado. 🤖💁🏽‍♀️✨
+      Algumas mensagens podem não fazer muito sentido, ou não serem respondidas corretamente.
+      Obrigado pela compreensão!`)
+    return
+  }
+
   console.log(`🤖 Apresentando IA para ${to}`)
   await enviarMensagem(
     to,
@@ -131,15 +145,15 @@ async function chamarGPT (from, mensagensAgrupadas) {
   const KNOWLEDGE_BASE = `
 Você é a IA oficial do Studio Damaris Braids. Você praticamente é a Damaris, mas em versão virtual. Sempre objetiva, simpática e prestativa.
 Responda sempre em JSON, sem texto fora do JSON.
-Se souber a resposta, use este formato:
+Se souber o que responder, use este formato:
 {
 "resposta": "texto da resposta para o cliente",
 "atendente": false
 }
 Se não souber, devolva no formato acima uma pergunta para entender melhor.
-Agora, caso ja tiver nas mensagens anteriores que você ja perguntou e ainda não souber responder use este formato:
+Agora, caso ja tiver nas mensagens anteriores que você ja perguntou 2x e ainda não souber responder use este formato:
 {
-"resposta": "Não consigo responder essa dúvida. Vou te direcionar para um atendente.",
+"resposta": "texto da resposta para o cliente avisando que um atendente humano entrará em contato em breve.",
 "atendente": true
 }
 `
@@ -195,7 +209,7 @@ async function ativarAtendente (from, ultimaMsg, erro = false) {
 
   await enviarMensagem(
     from,
-    `Olá! Seja muito bem-vinda ao Studio Damaris Braids.  
+    `Um atendente falará com você.  
 
 ⚠️ O atendimento via WhatsApp pode levar até 24 horas, conforme ordem de chegada.  
 
@@ -207,14 +221,19 @@ https://online.maapp.com.br/StudioDamarisBraids`
   )
 
   const numeroCliente = from.replace('@c.us', '')
+  await avisarGrupoContatoRebido(numeroCliente, ultimaMsg, 'Mensagem não respondida pela IA')
+
+  startTimeoutAtendimento(from)
+}
+
+async function avisarGrupoContatoRebido(numeroCliente, ultimaMsg, motivo) {
   await enviarMensagem(
     grupoAtendimento,
     `⚠️ *Novo pedido de atendimento*  
-Cliente: [${numeroCliente}](https://wa.me/${numeroCliente})  
+Cliente: [${numeroCliente}](https://wa.me/${numeroCliente})
+Motivo: *${motivo || 'Mensagem não respondida pela IA'}*  
 Mensagem: "${ultimaMsg}"`
   )
-
-  startTimeoutAtendimento(from)
 }
 
 async function processarBuffer (from) {
@@ -228,16 +247,8 @@ async function processarBuffer (from) {
   if (!respostaGPT) return
 
   if (respostaGPT.atendente) {
-    session.falhasConsecutivas++
     await enviarMensagem(from, respostaGPT.resposta)
-
-    if (session.falhasConsecutivas >= 2) {
-      await ativarAtendente(from, mensagensAgrupadas.join(' | '))
-      session.falhasConsecutivas = 0
-    }
-  } else {
-    session.falhasConsecutivas = 0
-    await enviarMensagem(from, respostaGPT.resposta)
+    await ativarAtendente(from, mensagensAgrupadas.join(' | '))
   }
 }
 
@@ -263,6 +274,7 @@ console.log('Body:', JSON.stringify(req.body, null, 2))
 
   if (!sessions[from]) {
     resetSession(from)
+    await avisarGrupoContatoRebido(numeroCliente, ultimaMsg, 'Novo contato iniciado')
     await apresentarIA(from)
   }
 

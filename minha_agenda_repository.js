@@ -45,7 +45,11 @@ export class MinhaAgendaRepository {
     }
   }
 
-  async checarConflitoOuSugerirHorariosAlternativos(browser, agendamento, closeBrowser = true) {
+  async checarConflitoOuSugerirHorariosAlternativos(agendamento, closeBrowser = true) {
+    const browser = await puppeteer.launch({
+      headless: false, // mostra o navegador (coloque true se quiser rodar em background)
+      defaultViewport: null,
+    });
     let page = null;
     try {
       console.log("============================================================");
@@ -308,8 +312,11 @@ export class MinhaAgendaRepository {
     }
   }
 
-  async setAgendamento(browser, agendamento, closeBrowser = true) {
-
+  async setAgendamento(agendamento, closeBrowser = true) {
+    const browser = await puppeteer.launch({
+      headless: false, // mostra o navegador (coloque true se quiser rodar em background)
+      defaultViewport: null,
+    });
     // Validar se a data e hora são futuras
     const dataValida = await this.validarDataFutura(agendamento.data, agendamento.hora);
     if (dataValida.ok === false) {
@@ -318,7 +325,7 @@ export class MinhaAgendaRepository {
       return dataValida
     }
 
-    const horarioDisponivel = await this.checarConflitoOuSugerirHorariosAlternativos(browser, agendamento, false)
+    const horarioDisponivel = await this.checarConflitoOuSugerirHorariosAlternativos(agendamento)
 
     if (horarioDisponivel)
 
@@ -486,7 +493,7 @@ export class MinhaAgendaRepository {
       console.log("✅ Botão de Salvar encontrado e clicado.");
 
       try {
-        const agendamentoEncontrado = await this.getAgendamento(browser, agendamento);
+        const agendamentoEncontrado = await this.getAgendamento(agendamento);
 
         console.log("AAAAAA", JSON.stringify(agendamentoEncontrado))
 
@@ -512,9 +519,14 @@ export class MinhaAgendaRepository {
     return retorno;
   }
 
-  async getAgendamento(browser, agendamento, closeBrowser = true) {
+  async getAgendamento(agendamento, closeBrowser = true) {
     console.log("-------------------- Iniciando getAgendamento ---------------------")
     console.log(JSON.stringify(agendamento))
+
+    const browser = await puppeteer.launch({
+      headless: false, // mostra o navegador (coloque true se quiser rodar em background)
+      defaultViewport: null,
+    });
     try {
       const valid = await this.validarDataFutura(agendamento.data, agendamento.hora);
       if (!valid.ok) {
@@ -752,7 +764,11 @@ export class MinhaAgendaRepository {
     }
   }
 
-  async getServicos(browser) {
+  async getServicos() {
+    const browser = await puppeteer.launch({
+      headless: false, // mostra o navegador (coloque true se quiser rodar em background)
+      defaultViewport: null,
+    });
     const page = await browser.newPage();
     await page.goto(this.baseUrl, {
       waitUntil: "networkidle2",

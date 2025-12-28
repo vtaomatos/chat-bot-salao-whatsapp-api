@@ -764,6 +764,121 @@ export class MinhaAgendaRepository {
     }
   }
 
+  async getServicosComDescricao() {
+    const browser = await puppeteer.launch({
+      headless: false, // mostra o navegador (coloque true se quiser rodar em background)
+      defaultViewport: null,
+    });
+    const page = await browser.newPage();
+    await page.goto(this.baseUrl, {
+      waitUntil: "networkidle2",
+    });
+
+    // Preenche os campos (ajuste os seletores conforme o HTML da página)
+    await page.type('input[type="email"]', this.usuario, { delay: 10 });
+    await page.type('input[type="password"]', this.senha, { delay: 10 });
+
+    // Clica no botão de login
+    await page.click('button[type="submit"]');
+
+    // Aguarda a navegação ou outro seletor da página logada
+    await page.waitForNavigation({ waitUntil: "networkidle2" });
+
+    console.log("Login realizado com sucesso!");
+
+    // Acessa a página de serviços
+    await page.goto(`${this.baseUrl}/servicos`, {
+      waitUntil: "networkidle2",
+    });
+
+    // Espera a tabela de serviços carregar
+    // Altera a quantidade de serviços exibidos para 50 (ultimo item da lista do select dropdown)
+    // Para alterar, clique no seletor de quantidade de serviços exibidos: #\:r19\:
+    // selecione o último item da lista (50)
+    // Espera a tabela de serviços carregar novamente
+    // Pega todos os nomes de serviços exibidos na tabela
+    // Para pegar os nomes, use o seletor: #infiniteScrollDiv > div:nth-child(2) > div > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-elevation1.css-g73cc8 > div.css-zwft14-content > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded.MuiPaper-elevation1.MuiCard-root.css-12nolks-root > div.MuiCardContent-root.css-1p9cd3b-content > div > div:nth-child(1) > table > tbody > tr:nth-child(28) > td:nth-child(1) > div > div.css-1keoiy0-cellNameColumnValue
+    // Para cada linha da tabela, pegue o texto do elemento que contém o nome do serviço
+
+
+    await page.waitForSelector('#infiniteScrollDiv > div:nth-child(2) > div > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-elevation1.css-g73cc8 > div.css-zwft14-content > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded.MuiPaper-elevation1.MuiCard-root.css-12nolks-root > div.MuiCardActions-root.MuiCardActions-spacing.css-11ah5ux-actions > div > div > div.MuiInputBase-root.MuiInputBase-colorPrimary.MuiTablePagination-input.css-fml6nx', { timeout: 5000 });
+    await page.click('#infiniteScrollDiv > div:nth-child(2) > div > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-elevation1.css-g73cc8 > div.css-zwft14-content > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded.MuiPaper-elevation1.MuiCard-root.css-12nolks-root > div.MuiCardActions-root.MuiCardActions-spacing.css-11ah5ux-actions > div > div > div.MuiInputBase-root.MuiInputBase-colorPrimary.MuiTablePagination-input.css-fml6nx');
+    await page.waitForSelector('#menu- > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded.MuiPaper-elevation8.MuiMenu-paper.MuiPopover-paper.MuiMenu-paper.css-1smm44m > ul > li:nth-child(3)', { timeout: 5000 });
+    await page.click('#menu- > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded.MuiPaper-elevation8.MuiMenu-paper.MuiPopover-paper.MuiMenu-paper.css-1smm44m > ul > li:nth-child(3)');
+    await page.waitForSelector('#infiniteScrollDiv > div:nth-child(2) > div > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-elevation1.css-g73cc8 > div.css-zwft14-content > div.MuiPaper-root.MuiPaper-elevation.MuiPaper-rounded.MuiPaper-elevation1.MuiCard-root.css-12nolks-root > div.MuiCardContent-root.css-1p9cd3b-content > div > div:nth-child(1) > table', { timeout: 5000 });
+    console.log("Tabela de serviços carregada, extraindo nomes...");
+    // Lógica para extrair os nomes dos serviços
+    const servicos = [];
+
+    await new Promise(r => setTimeout(r, 2000)); // espera 2 segundos para garantir que a tabela carregou
+
+    const rows = await page.$$('#infiniteScrollDiv tbody tr.MuiTableRow-hover');
+
+    console.log(`Encontradas ${rows.length} linhas de serviços.`);
+
+    for (const row of rows) {
+      await row.click();
+      console.log(row);
+      console.log("Clicou em uma linha de serviço para abrir o modal de detalhes.");
+      await new Promise(r => setTimeout(r, 500)); // espera meio segundo
+
+      const servico = await page.evaluate(() => {
+        const normalizeKey = (text) =>
+          text
+            .normalize("NFD")                 // separa acento da letra
+            .replace(/[\u0300-\u036f]/g, "")  // remove os acentos
+            .toLowerCase()
+            .trim();
+
+
+        const titulos = document.querySelectorAll(
+          'nav.MuiList-root li .MuiTypography-body1'
+        );
+        const conteudos = document.querySelectorAll(
+          'nav.MuiList-root li .MuiTypography-body2'
+        );
+
+        const obj = {};
+
+        console.log('Nome: ', conteudos[0].innerText);
+
+        titulos.forEach((tituloEl, idx) => {
+          const rawKey = tituloEl.innerText;
+          const key = normalizeKey(rawKey);
+
+          if (
+            ["descricao", "nome", "duracao", "preco"].some(t =>
+              key.includes(t)
+            )
+          ) {
+            obj[key] = conteudos[idx]
+              ? conteudos[idx].innerText.trim()
+              : null;
+          }
+        });
+
+        return obj;
+      });
+
+      servicos.push(servico);
+
+      const fechar = await page.$('.MuiDialogActions-root button.MuiButton-textPrimary');
+
+      if (fechar) {
+        await fechar.click();
+        console.log("Fechou o modal de detalhes do serviço.");
+      }
+
+      await new Promise(r => setTimeout(r, 500)); // espera meio segundo
+
+    }
+
+    console.log("Serviços encontrados:", servicos);
+
+    this.closeBrowser(browser); // fecha o navegador após a extração
+    return servicos;
+  }
+
   async getServicos() {
     const browser = await puppeteer.launch({
       headless: false, // mostra o navegador (coloque true se quiser rodar em background)
@@ -827,6 +942,252 @@ export class MinhaAgendaRepository {
 
     this.closeBrowser(browser); // fecha o navegador após a extração
     return servicos;
+  }
+
+  async updateAgendamento(agendamentoAntigo, agendamentoNovo, closeBrowser = true) {
+    console.log(" -------------------- Iniciando updateAgendamento ---------------------")
+    console.log("Agendamento Antigo:", JSON.stringify(agendamentoAntigo))
+    console.log("Agendamento Novo:", JSON.stringify(agendamentoNovo))
+
+    // Validar se a data e hora são futuras
+    const dataValida = await this.validarDataFutura(agendamentoNovo.data, agendamentoNovo.hora);
+    if (dataValida.ok === false) {
+      console.log("🚨 Data ou hora inválida para agendamento:", dataValida.reason)
+      return dataValida
+    }
+
+    const browser = await puppeteer.launch({
+      headless: false, // mostra o navegador (coloque true se quiser rodar em background)
+      defaultViewport: null,
+    });
+
+    //1 checar conflito do novo hoario
+
+    const horarioDisponivel = await this.checarConflitoOuSugerirHorariosAlternativos(agendamentoNovo)
+
+    if (horarioDisponivel) {
+      if (horarioDisponivel.ok === false) {
+        console.log("🚨 Não é possível agendar nesse horario por conflito de agenda. Horarios disponíveis para esse procedimento nos proximos dias: ",
+          JSON.stringify(horarioDisponivel.diasAlternativos).trim() ?? "Sem horario nos proximos 365 dias.")
+        if (closeBrowser) this.closeBrowser(browser);
+        return { ok: false, reason: "Não é possível agendar nesse horario por conflito de agenda.", diasAlternativos: horarioDisponivel.diasAlternativos ?? [] }
+      }
+    }
+
+
+    //2 checar existencia do agendamento antigo
+
+    const agendamentoExistente = await this.getAgendamento(agendamentoAntigo, false);
+    console.log("Agendamento existente verificado:", JSON.stringify(agendamentoExistente))
+
+    if (!agendamentoExistente?.agendamento && agendamentoExistente?.proximos?.length > 0) {
+      return agendamentoExistente;
+    }
+
+    if (agendamentoExistente.ok === false) {
+      console.log("🚨 Agendamento antigo não encontrado, não é possível atualizar.", JSON.stringify(agendamentoExistente))
+      if (closeBrowser) this.closeBrowser(browser);
+      return { ok: false, reason: "Agendamento antigo não encontrado, não é possível atualizar." }
+    }
+
+    //3 criar o novo agendamento
+
+    const criarNovo = await this.setAgendamento(agendamentoNovo, false);
+
+    if (criarNovo.ok === false) {
+      console.log("🚨 Não foi possível criar o novo agendamento.", JSON.stringify(criarNovo))
+      if (closeBrowser) this.closeBrowser(browser);
+      return { ok: false, reason: "Não foi possível criar o novo agendamento." }
+    }
+    console.log("✅ Novo agendamento criado com sucesso.")
+
+
+    //4 deletar o agendamento antigo
+
+    const deletarAntigo = await this.deletarAgendamento(agendamentoAntigo, false);
+
+    if (deletarAntigo.ok === false) {
+      console.log("🚨 Não foi possível deletar o agendamento antigo.", JSON.stringify(deletarAntigo))
+      if (closeBrowser) this.closeBrowser(browser);
+      return { ok: false, reason: "Não foi possível deletar o agendamento antigo." }
+    }
+    console.log("✅ Agendamento antigo deletado com sucesso.")
+
+    console.log("✅ Update de agendamento realizado com sucesso.")
+    if (closeBrowser) this.closeBrowser(browser);
+    return { ok: true, reason: "Update de agendamento realizado com sucesso." }
+  }
+
+  async deletarAgendamento(agendamento, closeBrowser = true) {
+    console.log("-------------------- Iniciando deletarAgendamento ---------------------");
+    console.log(JSON.stringify(agendamento));
+
+    const browser = await puppeteer.launch({
+      headless: false,
+      defaultViewport: null,
+    });
+
+    try {
+      /** ---------------------- 0) Validações ---------------------- */
+      const valid = await this.validarDataFutura(agendamento.data, agendamento.hora);
+      if (!valid.ok) {
+        console.log("🚨 Data ou hora inválida:", valid.mensagem);
+        if (closeBrowser) await this.closeBrowser(browser);
+        return valid;
+      }
+
+      const { cliente: nome, data, hora, telefone } = agendamento;
+      if (!nome || !telefone) throw new Error("Dados obrigatórios não fornecidos");
+
+      /** ---------------------- 1) Login ---------------------- */
+      const page = await browser.newPage();
+      await page.goto(this.baseUrl + "/login", { waitUntil: "networkidle2" });
+      await page.type('input[type="email"]', this.usuario, { delay: 10 });
+      await page.type('input[type="password"]', this.senha, { delay: 10 });
+      await page.click('button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: "networkidle2" });
+
+      console.log("✅ Login realizado. Indo para agenda...");
+      await page.goto(`${this.baseUrl}/agenda`, { waitUntil: "networkidle2" });
+
+      /** ---------------------- 2) Verificar existência ---------------------- */
+      const existente = await this.getAgendamento(agendamento, false);
+
+      if (!existente?.agendamento) {
+        console.log("🚨 Agendamento não encontrado para deleção.");
+        if (closeBrowser) await this.closeBrowser(browser);
+        return {
+          ok: false,
+          motivo: "Agendamento não encontrado, não é possível deletar.",
+          proximos: existente?.proximos ?? []
+        };
+      }
+
+      console.log("🧾 Agendamento encontrado. Iniciando deleção...");
+
+      /** ---------------------- 3) Abrir o modal do agendamento ---------------------- */
+
+      const limparTel = t => t ? t.replace(/\D/g, "") : "";
+
+      // reutiliza lógica do getAgendamento
+      const dataBase = (() => {
+        const [d, m, y] = data.split("/");
+        return new Date(`${y}-${m}-${d}T00:00:00-03:00`);
+      })();
+
+      const coletar = async () => {
+        // abre o calendário e seleciona o dia (mesma lógica do getAgendamento)
+        const dateInputSelector =
+          '.MuiInputBase-root.MuiInput-root.MuiInputBase-adornedEnd.Mui-readOnly, ' +
+          '.MuiInputBase-root.MuiInput-root.MuiInputBase-adornedEnd.Mui-readOnly input[readonly]';
+
+        await page.waitForSelector(dateInputSelector);
+        await page.click(dateInputSelector);
+
+        const headerSelector = ".MuiPickersCalendarHeader-label";
+        await page.waitForSelector(headerSelector);
+        const headerText = await page.$eval(headerSelector, el => el.textContent.trim());
+        const [mesNome, anoStr] = headerText.split(" ");
+        const mesAtual = await this.monthNameToNumber(mesNome);
+        const anoAtual = parseInt(anoStr);
+
+        const clicks = await this.monthsDiff(
+          mesAtual,
+          anoAtual,
+          dataBase.getMonth() + 1,
+          dataBase.getFullYear()
+        );
+
+        for (let i = 0; i < clicks; i++) {
+          await page.click('button[aria-label="Next month"]');
+          await new Promise(r => setTimeout(r, 200));
+        }
+
+        const buttons = await page.$$("button");
+        for (const btn of buttons) {
+          const txt = await page.evaluate(el => el.textContent.trim(), btn);
+          if (txt === String(dataBase.getDate())) {
+            await btn.click();
+            break;
+          }
+        }
+
+        for (const btn of buttons) {
+          const txt = await page.evaluate(el => el.textContent.trim().toUpperCase(), btn);
+          if (txt === "OK") {
+            await btn.click();
+            break;
+          }
+        }
+
+        await new Promise(r => setTimeout(r, 800));
+      };
+
+      await coletar();
+
+      /** ---------------------- 4) Abrir evento correto ---------------------- */
+      const eventos = await page.$$(".fc-time-grid-event");
+
+      for (const ev of eventos) {
+        await page.evaluate(el => el.click(), ev);
+        await page.waitForSelector(".MuiDialog-paper", { timeout: 5000 });
+
+        const dados = await page.evaluate(() => {
+          const modal = document.querySelector(".MuiDialog-paper");
+          const q = sel => modal.querySelector(sel);
+          return {
+            horario: q(".MuiListItemText-primary")?.textContent.trim(),
+            telefone: q(".css-cl5ei2-phoneTile")?.textContent.trim()
+          };
+        });
+
+        if (
+          dados?.horario?.startsWith(hora) &&
+          limparTel(dados?.telefone).endsWith(limparTel(telefone))
+        ) {
+          console.log("🗑️ Agendamento correto aberto. Deletando...");
+
+          /** ---------------------- 5) Deletar ---------------------- */
+          const botoes = await page.$$("button");
+          for (const btn of botoes) {
+            const txt = await page.evaluate(el => el.textContent.trim().toUpperCase(), btn);
+            if (txt === "DELETAR" || txt === "EXCLUIR") {
+              await btn.click();
+              break;
+            }
+          }
+
+          await page.waitForTimeout(500);
+
+          /** Confirmar deleção */
+          const confirmBtns = await page.$$("button");
+          for (const btn of confirmBtns) {
+            const txt = await page.evaluate(el => el.textContent.trim().toUpperCase(), btn);
+            if (txt === "CONFIRMAR" || txt === "OK" || txt === "SIM") {
+              await btn.click();
+              break;
+            }
+          }
+
+          console.log("✅ Agendamento deletado com sucesso.");
+          if (closeBrowser) await this.closeBrowser(browser);
+          return { ok: true };
+        }
+
+        // fecha modal se não for o correto
+        await page.keyboard.press("Escape");
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      console.log("❌ Não foi possível localizar o agendamento no dia.");
+      if (closeBrowser) await this.closeBrowser(browser);
+      return { ok: false, motivo: "Agendamento não localizado para deleção." };
+
+    } catch (err) {
+      console.log("❌ Erro no deletarAgendamento:", err);
+      if (closeBrowser) await this.closeBrowser(browser);
+      return { ok: false, motivo: "Erro interno." };
+    }
   }
 
   monthNameToNumber(name) {

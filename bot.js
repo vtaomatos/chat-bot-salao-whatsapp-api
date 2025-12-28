@@ -60,6 +60,21 @@ function carregarDuvidas() {
 }
 const INFOS_DUVIDAS = carregarDuvidas()
 
+
+function carregarServicos() {
+  try {
+    const file = readFileSync('./lista_serrvicos.json', 'utf-8')
+    const json = JSON.parse(file)
+
+    return Array.isArray(json.servicos) ? json.servicos : []
+  } catch (err) {
+    console.error('Erro ao carregar lista_serrvicos.json:', err)
+    return []
+  }
+}
+
+const INFOS_SERVICOS = carregarServicos()
+
 function resetSession(from) {
   console.log(`🔄 Resetando sessão para ${from}`)
   if (sessions[from]?.timeoutId) clearTimeout(sessions[from].timeoutId)
@@ -174,6 +189,7 @@ Se for para agendar atendimetno peça os dados: nome, telefone (somente numeros)
 "resposta": "texto da resposta para o cliente informando que o agendamento será processado.",
 "atendente": false
 }
+Quando for confirmação será explicito que é uma confirmação. A chave é "confirmacao_agendamento" e deve conter os mesmos dados da solicitação de agendamento.
 Se for consultar agendamento peça os dados: nome, telefone (somente números), data (dd/mm/aaaa) e hora(hh:mm). E retorne no formato abaixo:
 {
 "consulta_agendamento": {
@@ -185,9 +201,9 @@ Se for consultar agendamento peça os dados: nome, telefone (somente números), 
 "resposta": "texto da resposta para o cliente infomando que está buscando as informações do agendamento.",
 "atendente": false
 }
-Se for cancelar agendamento peça os dados: nome, telefone (somente números), data (dd/mm/aaaa) e hora(hh:mm). E retorne no formato abaixo:
+Se for solicitação de cancelamento de agendamento peça os dados: nome, telefone (somente números), data (dd/mm/aaaa) e hora(hh:mm). E retorne no formato abaixo:
 {
-"cancelamento_agendamento": {
+"solicitacao_cancelamento_agendamento": {
 "nome": "Nome do cliente",
 "telefone": "11999999999",
 "data": "DD/MM/AAAA",
@@ -196,9 +212,11 @@ Se for cancelar agendamento peça os dados: nome, telefone (somente números), d
 "resposta": "texto da resposta para o cliente informando que o cancelamento será processado.",
 "atendente": false
 }
-Se for alterar agendamento peça os dados: nome, telefone (somente números), data (dd/mm/aaaa), hora (hh:mm), nova data (dd/mm/aaaa) e nova hora(hh:mm). E retorne no formato abaixo:
+Se for confirmação de cancelamento de agendamento a chave é "confirmacao_cancelamento_agendamento" e deve conter os mesmos dados da solicitação de cancelamento.
+Se for solicitação de alteração agendamento peça os dados: nome, telefone (somente números), data (dd/mm/aaaa), hora (hh:mm), nova data (dd/mm/aaaa) e nova hora(hh:mm). E retorne no formato abaixo:
 {
 "alteracao_agendamento": {
+"novo" :{
 "nome": "Nome do cliente",
 "telefone": "11999999999",
 "data": "DD/MM/AAAA",
@@ -206,20 +224,31 @@ Se for alterar agendamento peça os dados: nome, telefone (somente números), da
 "nova_data": "DD/MM/AAAA",
 "nova_hora": "HH:MM"
 },
+"antigo" :{
+"telefone": "11999999999",
+"data": "DD/MM/AAAA",
+"hora": "HH:MM"
+}},
 "resposta": "texto da resposta para o cliente informando que a alteração será processada.",
 "atendente": false
 }
+Se for confirmação de alteração de agendamento a chave é "confirmacao_alteracao_agendamento" e deve conter os mesmos dados da solicitação de alteração.
 Para os procedimentos de agendamento, consulta, cancelamento ou alteração, o cliente deve fornecer todas as informações solicitadas. Só deve retornar o JSON com os dados quando todas as informações forem fornecidas.
+Cada serviço tem suas regras e condições para determinarmos alguma variação de tempo de duração ou preço para o cliente. Então faça as perguntas necessárias para precificar e determinar tempo conforme os dados fornecidos aqui:
+
+`
+    + INFOS_SERVICOS +
+    `
 Se o cliente mencionar que enviou áudio, vídeo, foto, link ou documento, responda pedindo para ele descrever em texto e NÃO tente interpretar a mídia.
 Caso o cliente não possa digitar, transfira para um atendente humano.
-`
-    // Informações cursos:
-    // ${INFOS_FIXAS_CURSOS}
-    +
-    `
+
 Perguntas frequentes:
 ${INFOS_DUVIDAS}
 `
+
+  // Informações cursos:
+  // ${INFOS_FIXAS_CURSOS}
+
 
   const mensagensParaGPT = [
     { role: 'system', content: KNOWLEDGE_BASE },
@@ -310,7 +339,11 @@ async function pegarServicoSolicitado(mensagensAgrupadas, respostaGPT, listaDeSe
     return {
       servico: null,
       identificado: false,
-      mensagemParaUsuario: "Não consegui identificar o serviço desejado."
+      mensagemParaUsuario: "Não consegui identificar o serviço desejado. Servicos Disponíveis:\n" +
+        listaDeServicos.servicos
+          .map(s => `- ${s.nome} (${s.duracao} min) – ${s.preco || ""}`)
+          .join("\n") +
+        "\n\nPor favor, responda exatamente com o nome do serviço que deseja."
     };
   }
 
@@ -599,9 +632,9 @@ async function processarBuffer(from) {
       // ======================================================
       // 1️⃣ AGENDAMENTO ENCONTRADO (caso principal)
       // ======================================================
-      if (agendamento?.atual) {
+      if (agendamento?.agendamento) {
 
-        const a = agendamento.atual;
+        const a = agendamento.agendamento;
 
         await enviarMensagem(
           from,
@@ -621,7 +654,7 @@ async function processarBuffer(from) {
       // ======================================================
       // 2️⃣ NÃO ENCONTROU ESSE AGENDAMENTO, MAS TEM *PRÓXIMOS*
       // ======================================================
-      if (!agendamento?.atual && agendamento?.proximos?.length > 0) {
+      if (!agendamento?.agendamento && agendamento?.proximos?.length > 0) {
 
         let msg =
           "Não encontrei um agendamento ativo para essa data. 😕\n" +
@@ -660,6 +693,73 @@ async function processarBuffer(from) {
       );
 
       return;
+    }
+  }
+
+  if (respostaGPT.cancelamento_agendamento) {
+    console.log('❌ Confirmação de cancelamento de agendamento recebida:', respostaGPT.cancelamento_agendamento);
+
+    try {
+      const dadosCancelamento = respostaGPT.cancelamento_agendamento;
+      // -----------------------------------------
+      // 📌 Cancelamento no repositório da agenda
+      // -----------------------------------------
+      const resultado = await minhaAgenda.cancelarAgendamento(dadosCancelamento);
+      if (resultado.ok) {
+        await enviarMensagem(
+          from,
+          `✅ Seu agendamento para *${resultado.data}* às *${resultado.horario}* foi cancelado com sucesso.\n\n` +
+          `Se precisar de algo mais, é só me chamar!`
+        );
+      } else {
+        await enviarMensagem(
+          from,
+          `❌ Não consegui cancelar seu agendamento: ${resultado.mensagem}\n\n` +
+          `Por favor, aguarde enquanto um atendente verifica manualmente. 🙏`
+        );
+      }
+
+    } catch (err) {
+      console.error("⚠️ Erro ao cancelar agendamento:", err);
+      await enviarMensagem(
+        from,
+        "Tive um problema ao cancelar seu agendamento agora 😕\n" +
+        "Por favor, aguarde enquanto um atendente verifica manualmente. 🙏"
+      );
+    }
+  }
+
+  if (respostaGPT.alteracao_agendamento) {
+    console.log('🔄 Confirmação de alteração de agendamento recebida:', respostaGPT.alteracao_agendamento);
+    try {
+      const antigoAgendamento = respostaGPT.alteracao_agendamento.antigo;
+      const novosAgendamento = respostaGPT.alteracao_agendamento.novo;
+      // -----------------------------------------
+      // 📌 Alteração no repositório da agenda
+      // -----------------------------------------
+      const resultado = await minhaAgenda.updateAgendamento(antigoAgendamento, novosAgendamento);
+      if (resultado.ok) {
+        await enviarMensagem(
+          from,
+          `✅ Seu agendamento foi alterado com sucesso:\n\n` +
+          `📅 *Nova Data:* ${resultado.nova_data}\n` +
+          `⏰ *Novo Horário:* ${resultado.novo_horario}\n\n` +
+          `Se precisar de algo mais, é só me chamar!`
+        );
+      } else {
+        await enviarMensagem(
+          from,
+          `❌ Não consegui alterar seu agendamento: ${resultado.mensagem}\n\n` +
+          `Por favor, aguarde enquanto um atendente verifica manualmente. 🙏`
+        );
+      }
+    } catch (err) {
+      console.error("⚠️ Erro ao alterar agendamento:", err);
+      await enviarMensagem(
+        from,
+        "Tive um problema ao alterar seu agendamento agora 😕\n" +
+        "Por favor, aguarde enquanto um atendente verifica manualmente. 🙏"
+      );
     }
   }
 

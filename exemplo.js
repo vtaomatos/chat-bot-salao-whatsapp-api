@@ -18,16 +18,13 @@ const repo = new MinhaAgendaRepository({
     duracaoMinutos: 240,
     data: "06/11/2025",
     hora: "17:00",
-    dataNascimento:"06/05/1990"
+    dataNascimento: "06/05/1990"
   }
 
-  const browser = await puppeteer.launch({
-    headless: false, // mostra o navegador (coloque true se quiser rodar em background)
-    defaultViewport: null,
-  });
+  // repo.setAgendamento(agendamento)
+  // repo.getServicos()
+  repo.getServicosComDescricao()
 
-  repo.setAgendamento(browser, agendamento)
-  // repo.getServicos(browser)
   // repo.checarConflitosAgendamento(browser, agendamento)
   // repo.getAgendamento(browser, agendamento)
   // repo.checarConflitoOuSugerirHorariosAlternativos(browser, agendamento)
